@@ -1,0 +1,90 @@
+@startuml container
+!include  https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(Client, "Клиент банка", "Клиент банка, заинтересованный в открытии депозита")
+Person(Manager_cc, "Сотрудник кол-центра", "Сотрудник компании, который обрабатывает заявки")
+Person(Manager_bo_d, "Сотрудник бэк-офиса депозитов", "Сотрудник компании, который обрабатывает заявки и ставки по депозитам")
+Person(Manager_bo_c, "Сотрудник бэк-офиса кредитов", "Сотрудник компании, который обрабатывает ставки по депозитам")
+
+System_Boundary(Bank, "Банк-стандарт"){
+    System_Boundary(depositSystem, "Система онлайн обработки открытия депозитов", "Система, которая позволяет пользователю открывать депозиты онлайн"){
+        Container(InternetBank, "Интернет-банк (web-interface)", ".NET")
+        Container(Site, "Сайт", "PHP, React.js")
+        Container_Boundary(BFFLayer, "BFFLayer"){
+            Container(SiteBFF, "BFF: Сайт", "PHP")
+            Container(InternetBankBFF, "BFF: Интернет-банк", ".NET")
+        }
+        Container(ApiGateway, "API Gateway", "Spring Cloud Gateway", "Маршрутизация запросов")
+
+        Container(StatementService, "StatementService", "Java Spring", "Обработка заявок на открытие депозита")
+        ContainerDb(StatementServiceDB, "StatementServiceDB", "PostgreSQL", "Хранение информации о заявках")
+
+        Container(RateService, "RateService", "Java Spring", "Обработка депозитных ставок, включая персональные")
+        ContainerDb(RateServiceDB, "RateServiceDB", "Redis", "Хранение информации о депозитных ставках, включая персональные")
+
+        Container(NotificationService, "NotificationService", "Java Spring", "Сервис управления оповещениями")
+        ContainerDb(NotificationServiceDB, "NotificationServiceDB", "PostgreSQL", "Хранение информации об оповещениях")
+    }
+
+    Container(AuthService, "AuthService", "Java Spring", "Авторизация и аутентификация")
+    Container(Kafka, "Kafka", "Kafka", "Шина событий")
+
+    System_Boundary(ABS, "АБС", "Система, которая позволяет управлять депозитами и ставками"){
+        Container(ABSEventService, "ABSEventService", "Java Spring", "Сервис взаимодействия с АБС. Rate Limit для защиты АБС")
+        Container_Boundary(ABSDesktop, "Десктопное приложение для сотрудников"){
+            Container(ABSDesktopRate, "ABSDesktopRate", "Delphi", "Управление ставками по депозиту")
+            Container(ABSDesktopStatement, "ABSDesktopStatement", "Delphi", "Управление заявками по депозиту")
+        }
+        Container(ABSMiddleware, "АБС Middleware (API)", "Java Spring", "API-Слой")
+        ContainerDb(ABSDB, "БД АБС", "Oracle", "Хранение данных АБС")
+    }    
+    System(cc, "Кол-центр", "Система, которая позволяет обрабатывать обращения клиентов")
+    System(Zipkin, "Система трассировок", "Zipkin")
+    System(ELK, "Система логирования", "ELK")
+    System(Grafana, "Система мониторинга", "Grafana")
+}
+System_Ext(telecom, "Телеком-оператор", "Внешний оператор по отправке СМС")
+
+Rel(Client, Site, "Получение информации о депозитах, оформление депозита", HTTPS)
+Rel(Client, InternetBank, "Получение информации о депозитах, оформление депозита", HTTPS)
+Rel(Site, SiteBFF, "Вызов API", HTTPS)
+Rel(InternetBank, InternetBankBFF, "Вызов API", HTTPS)
+Rel(SiteBFF, ApiGateway, "Вызов API", HTTPS)
+Rel(InternetBankBFF, ApiGateway, "Вызов API", HTTPS)
+
+Rel(ApiGateway, StatementService, "Маршрутизация запросов", HTTPS)
+Rel(StatementService, StatementServiceDB, "Чтение/запись", JDBC)
+Rel(StatementService, Kafka, "Публикация новых заявок от авторизованных пользователей", Kafka Producer)
+Rel(StatementService, cc, "Создание обращений по заявкам от неавторизованных пользователей", HTTPS)
+
+Rel(ApiGateway, RateService, "Маршрутизация запросов", HTTPS)
+Rel(RateService, RateServiceDB, "Чтение/запись", RESP)
+Rel(RateService, Kafka, "Получение изменений ставок", Kafka Consumer)
+
+Rel(ABSEventService, Kafka, "Публикация событий об изменении ставок и статуса заявок", Kafka Producer)
+Rel(ABSEventService, Kafka, "Чтение событий о создании новой заявки", Kafka Consumer)
+Rel(ABSEventService, ABSMiddleware, "Получение информации о ставках и статусах заявок / Создание новой заявки", HTTPS)
+
+Rel(ApiGateway, NotificationService, "Маршрутизация запросов", HTTPS)
+Rel(NotificationService, Kafka, "Получение событий о статусах заявки", Kafka Consumer)
+Rel(NotificationService, telecom, "Отправка СМС-сообщений", Kafka Consumer)
+Rel(NotificationService, NotificationServiceDB, "Чтение/запись", JDBC)
+
+Rel(Manager_bo_d, ABSDesktopStatement, "Управление заявками")
+Rel(Manager_bo_d, ABSDesktopRate, "Управление ставками")
+Rel(Manager_bo_c, ABSDesktopRate, "Управление ставками")
+Rel(ABSDesktop, ABSDB, "Вызов процедур", JDBC)
+Rel(ABSMiddleware, ABSDB, "Вызов процедур", JDBC)
+
+Rel(Manager_cc, cc, "Обработка заявок", HTTPS)
+Rel(telecom, Client, "СМС-оповещение")
+
+Rel(InternetBankBFF, AuthService, "Авторизация и аутентификация", HTTPS)
+Rel(ApiGateway, AuthService, "Проверка авторизации и аутентификации", HTTPS)
+Rel(Grafana, ELK, "Получение данных для мониторинга", HTTPS)
+Rel(Zipkin, Kafka, "Получение трассировок", Kafka Consumer)
+Rel(depositSystem, Kafka, "Публикация трассировок", Kafka Producer)
+Rel(depositSystem, ELK, "Публикация логов", HTTPS)
+Rel(ABSEventService, ELK, "Публикация логов", HTTPS)
+Rel(Manager_cc, Client, "Звонок клиенту")
+@enduml 
