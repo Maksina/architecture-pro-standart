@@ -1,0 +1,114 @@
+@startuml container
+!include  https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(Client, "Клиент банка", "Клиент банка, заинтересованный в открытии кредита")
+Person(Manager_bo_c, "Сотрудник бэк-офиса кредитов", "Сотрудник компании, который обрабатывает заявки на кредит")
+Person(Manager_fo, "Сотрудник фронт-офиса", "Сотрудник фронт-офиса компании, который оформляет заявки на кредит офлайн")
+
+System_Boundary(Bank, "Банк-стандарт"){
+    System_Boundary(OnlineCreditSystem, "Система онлайн кредитования", "Система, которая позволяет пользователю взять кредит онлайн"){
+        Container(InternetBank, "Интернет-банк (web-interface)", ".NET")
+        Container(Site, "Сайт", "PHP, React.js")
+        Container_Boundary(BFFLayer, "BFFLayer"){
+            Container(SiteBFF, "BFF: Сайт", "PHP")
+            Container(InternetBankBFF, "BFF: Интернет-банк", ".NET")
+        }
+        Container(ApiGateway, "API Gateway", "Spring Cloud Gateway", "Маршрутизация запросов")
+
+        Container(StatementCreditService, "StatementCreditService", "Java Spring", "Обработка заявок на открытие кредита")
+        ContainerDb(StatementCreditServiceDB, "StatementCreditServiceDB", "PostgreSQL", "Хранение информации о первичных заявках")
+
+        Container(PreliminaryDecisionService, "PreliminaryDecisionService", "Java Spring", "Сервис предварительных решений")
+
+        Container(ScoringScheduleService, "ScoringScheduleService", "Java Spring", "Сервис периодического предрасчета скоринга")
+
+        Container(RateService, "RateService", "Java Spring", "Обработка депозитных и кредитных ставок, включая персональные и предварительно одобренные")
+        ContainerDb(RateServiceDB, "RateServiceDB", "Redis", "Хранение информации о депозитных и кредитных ставках, включая персональные и предварительно одобренные")
+
+        Container(NotificationService, "NotificationService", "Java Spring", "Сервис управления оповещениями")
+        ContainerDb(NotificationServiceDB, "NotificationServiceDB", "PostgreSQL", "Хранение информации об оповещениях")
+    }
+
+    Container(AuthService, "AuthService", "Java Spring", "Авторизация и аутентификация")
+    Container(Kafka, "Kafka", "Kafka", "Шина событий")
+
+    System_Boundary(ABS, "АБС", "Система, которая позволяет регистрировать заявки на кредит из фронт-офиса"){
+        Container(ABSEventService, "ABSEventService", "Java Spring", "Сервис взаимодействия с АБС. Rate Limit для защиты АБС")
+        Container(ABSDesktop, "Десктопное приложение для сотрудников", "Delphi", "Оформление заявок")
+        Container(ABSMiddleware, "АБС Middleware (API)", "Java Spring", "API-Слой")
+        ContainerDb(ABSDB, "БД АБС", "Oracle", "Хранение данных АБС")
+    }    
+
+    System_Boundary(CreditSystem, "Система кредитования", "Система, которая позволяет обрабатывать заявки клиентов"){
+        Container(CreditConv, "Кредитный конвейер", "Java(comunda)", "Рабочее место сотрудников кредитования")
+        ContainerDb(CreditConvDB, "CreditConvDB", "Oracle", "Хранение заявок")
+
+        Container(CreditScoringService, "Система кредитного скоринга", "Python", "Определяет рейтинг клиента для выдачи ему кредита")
+        ContainerDb(CreditScoringServiceDB, "CreditScoringServiceDB", "PostgreSQL", "Хранение информации для кредитного скоринга")
+    }   
+    System(Zipkin, "Система трассировок", "Zipkin")
+    System(ELK, "Система логирования", "ELK")
+    System(Grafana, "Система мониторинга", "Grafana")
+}
+
+System_Ext(Telecom, "Телеком-оператор", "Внешний оператор по отправке СМС")
+System_Ext(BKI, "Бюро Кредитных Историй", "Внешняя система предоставляющая кредитную историю по человеку")
+
+Rel(Client, Site, "Получение информации об условиях кредита, оформление заявки", HTTPS)
+Rel(Site, SiteBFF, "Вызов API", HTTPS)
+Rel(SiteBFF, ApiGateway, "Вызов API", HTTPS)
+Rel(ApiGateway, StatementCreditService, "Маршрутизация запросов", HTTPS)
+Rel(StatementCreditService, StatementCreditServiceDB, "Чтение/запись", JDBC)
+Rel(ApiGateway, PreliminaryDecisionService, "Маршрутизация запросов", HTTPS)
+Rel(PreliminaryDecisionService, BKI, "Получение кредитной истории", HTTPS)
+Rel(PreliminaryDecisionService, Kafka, "Публикация предварительного решения", Kafka Producer)
+Rel(StatementCreditService, Kafka, "Публикация события оформления заявки от авторизованного/неавторизованного пользователя", Kafka Producer)
+
+Rel(Client, InternetBank, "Получение информации об условиях кредита, оформление заявки", HTTPS)
+Rel(InternetBank, InternetBankBFF, "Вызов API", HTTPS)
+Rel(InternetBankBFF, ApiGateway, "Вызов API", HTTPS)
+
+
+Rel(ApiGateway, NotificationService, "Маршрутизация запросов", HTTPS)
+Rel(NotificationService, Kafka, "Получение событий о статусах заявки", Kafka Consumer)
+Rel(NotificationService, Telecom, "Отправка СМС-сообщений", HTTPS)
+Rel(NotificationService, NotificationServiceDB, "Чтение/запись", JDBC)
+Rel(Telecom, Client, "СМС-оповещение")
+
+Rel(Client, Manager_fo, "Оформление заявки на кредит")
+Rel(Manager_fo, ABSDesktop, "Оформление заявки на кредит")
+Rel(ABSEventService, Kafka, "Получение предварительных решений/Получение заявок от неавторизованных пользователей", Kafka Consumer)
+Rel(ABSEventService, ABSMiddleware, "Сохранение информации о предварительном решении и заявок от неавторизованных пользователей", HTTPS)
+
+Rel(ScoringScheduleService, CreditScoringService, "Периодический опрос на подсчет скоринга", HTTPS)
+Rel(ScoringScheduleService, Kafka, "Публикация предодобренных предложений и ставок", HTTPS)
+Rel(ApiGateway, RateService, "Маршрутизация запросов", HTTPS)
+Rel(RateService, RateServiceDB, "Чтение/запись", RESP)
+Rel(RateService, Kafka, "Получение предодобренных предлождений и ставок/Получение общих условий кредитования", Kafka Consumer)
+
+Rel(CreditConv, Kafka, "Получение заявок от авторизованных пользователей", Kafka Consumer)
+Rel(CreditConv, Kafka, "Получение предодобренных предлождений и ставок", Kafka Consumer)
+Rel(CreditConv, Kafka, "Публикация статусов заявки/Публикация изменений условий кредитования", Kafka Producer)
+Rel(ABSDesktop, ABSDB, "Вызов процедур", JDBC)
+Rel(ABSMiddleware, ABSDB, "Вызов процедур", JDBC)
+Rel(InternetBankBFF, AuthService, "Авторизация и аутентификация", HTTPS)
+Rel(ApiGateway, AuthService, "Проверка авторизации и аутентификации", HTTPS)
+Rel(Manager_bo_c, CreditConv, "Обработка заявок", HTTPS)
+
+
+Rel(CreditConv, CreditConvDB, "Чтение/запись", JDBC)
+Rel(CreditScoringService, CreditScoringServiceDB, "Чтение/запись", JDBC)
+Rel(CreditConv, CreditScoringService, "Получение скоринга", HTTPS)
+Rel(CreditConvDB, CreditScoringServiceDB, "Загрузка данных")
+Rel(ABSDB, CreditConvDB, "Загрузка данных")
+Rel(ABSDB, CreditScoringServiceDB, "Загрузка данных")
+Rel(CreditScoringService, BKI, "Получение истории", HTTPS)
+
+Rel_U(Grafana, ELK, "Получение данных для мониторинга", HTTPS)
+Rel(Zipkin, Kafka, "Получение трассировок", Kafka Consumer)
+Rel(OnlineCreditSystem, Kafka, "Публикация трассировок", Kafka Producer)
+Rel(OnlineCreditSystem, ELK, "Публикация логов", HTTPS)
+Rel(ABSEventService, ELK, "Публикация логов", HTTPS)
+
+
+@enduml 

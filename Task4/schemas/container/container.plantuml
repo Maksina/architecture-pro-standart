@@ -1,0 +1,59 @@
+@startuml container
+!include  https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(Client, "Клиент банка", "Клиент банка, заинтересованный в открытии депозита")
+Person(Manager_cc, "Сотрудник кол-центра", "Сотрудник компании, который обрабатывает заявки")
+Person_Ext(Manager_cc_ext, "Сотрудник партнёрского кол-центра", "Сотрудник партнёрского кол-центра, который обрабатывает заявки")
+Person(Manager_bo_d, "Сотрудник бэк-офиса депозитов", "Сотрудник компании, который обрабатывает заявки и ставки по депозитам")
+Person(Manager_bo_c, "Сотрудник бэк-офиса кредитов", "Сотрудник компании, который обрабатывает ставки по депозитам")
+
+System_Ext(cc_ext, "Система партнёрского кол-центра", "Система, которая позволяет обрабатывать обращения клиентов")
+System_Boundary(Bank, "Банк-стандарт"){
+    System_Boundary(depositSystem, "Система онлайн обработки открытия депозитов", "Система, которая позволяет пользователю открывать депозиты онлайн"){
+        Container(ApiGateway, "API Gateway", "Spring Cloud Gateway", "Маршрутизация запросов")
+        Container(RateService, "RateService", "Java Spring", "Обработка депозитных ставок, включая персональные")
+        ContainerDb(RateServiceDB, "RateServiceDB", "Redis", "Хранение информации о депозитных ставках, включая персональные")
+        Container(RateExportService, "RateExportService", "Java Spring","Периодическое формирование файла и запись в SFTP-сервер")
+        Container(SFTPServer, "SFTPServer", "OpenSSH")
+}
+    Container(Kafka, "Kafka", "Kafka", "Шина событий")
+    System_Boundary(ABS, "АБС", "Система, которая позволяет управлять депозитами и ставками"){
+        Container(ABSEventService, "ABSEventService", "Java Spring", "Сервис взаимодействия с АБС. Rate Limit для защиты АБС")
+        Container(ABSDesktopRate, "ABSDesktopRate", "Delphi", "Управление ставками по депозиту")
+        Container(ABSMiddleware, "АБС Middleware (API)", "Java Spring", "API-Слой")
+        ContainerDb(ABSDB, "БД АБС", "Oracle", "Хранение данных АБС")
+    }    
+    System(cc, "Кол-центр", "Система, которая позволяет обрабатывать обращения клиентов")
+    System(Zipkin, "Система трассировок", "Zipkin")
+    System(ELK, "Система логирования", "ELK")
+    System(Grafana, "Система мониторинга", "Grafana")
+}
+
+Rel(ApiGateway, RateService, "Маршрутизация запросов", HTTPS)
+Rel(RateService, RateServiceDB, "Чтение/запись", RESP)
+Rel(RateService, Kafka, "Получение изменений ставок", Kafka Consumer)
+
+Rel(ABSEventService, Kafka, "Публикация событий об изменении ставок", Kafka Producer)
+Rel(ABSEventService, ABSMiddleware, "Получение информации о ставках", HTTPS)
+
+Rel(Manager_bo_d, ABSDesktopRate, "Управление ставками")
+Rel(Manager_bo_c, ABSDesktopRate, "Управление ставками")
+Rel(ABSDesktopRate, ABSDB, "Вызов процедур", JDBC)
+Rel(ABSMiddleware, ABSDB, "Вызов процедур", JDBC)
+Rel_R(Grafana, ELK, "Получение данных для мониторинга", HTTPS)
+
+Rel_D(Manager_cc, cc, "Обработка заявок и получение актуальных ставок", HTTPS)
+Rel_D(Manager_cc_ext, cc_ext, "Обработка заявок и получение актуальных ставок", HTTPS)
+Rel_U(Manager_cc, Client, "Взаимодействие с клиентом")
+Rel_U(Manager_cc_ext, Client, "Взаимодействие с клиентом")
+Lay_R(Manager_cc_ext, Manager_cc)
+Rel_R(cc, ApiGateway, "Получение ставок", HTTPS)
+Rel_R(RateExportService, RateService, "Получение ставок", HTTPS)
+Rel_L(RateExportService, SFTPServer, "Сохранение файла", SFTP)
+Rel_R(cc_ext, SFTPServer, "Получение актуальных ставок", SFTP)
+Lay_U(depositSystem, Kafka)
+Lay_R(depositSystem, ABS)
+Rel_U(Zipkin, Kafka, "Получение трассировок", Kafka Consumer)
+Rel_U(depositSystem, ELK, "Передача логов", HTTPS)
+Rel_U(ABS, ELK,"Передача логов", HTTPS)
+@enduml 
