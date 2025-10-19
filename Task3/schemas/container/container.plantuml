@@ -67,7 +67,7 @@ Rel(ABSEventService, ABSMiddleware, "Получение информации о 
 
 Rel(ApiGateway, NotificationService, "Маршрутизация запросов", HTTPS)
 Rel(NotificationService, Kafka, "Получение событий о статусах заявки", Kafka Consumer)
-Rel(NotificationService, telecom, "Отправка СМС-сообщений", Kafka Consumer)
+Rel(NotificationService, telecom, "Отправка СМС-сообщений", HTTPS)
 Rel(NotificationService, NotificationServiceDB, "Чтение/запись", JDBC)
 
 Rel(Manager_bo_d, ABSDesktopStatement, "Управление заявками")

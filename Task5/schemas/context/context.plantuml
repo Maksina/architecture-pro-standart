@@ -1,0 +1,26 @@
+@startuml context
+!include  https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+Person(client, "Клиент банка", "Клиент банка, заинтересованный в открытии депозита")
+Person(manager_bo_c, "Сотрудник бэк-офиса кредитов", "Сотрудник компании, который обрабатывает ставки по депозитам")
+Person(manager_fo, "Сотрудник фронт-офиса", "Сотрудник компании, который принимает заявления от клиентов и заводит их в системе")
+
+System_Boundary(bank, "Банк-стандарт"){
+    System(OnlineCreditSystem, "Система онлайн кредитования", "Система, которая позволяет пользователю взять кредит онлайн")
+    System(ABS, "АБС", "Система, которая позволяет принимать заявки на кредит")
+    System(CreditSystem, "Система кредитования", "Система, которая позволяет обрабатывать заявки клиентов")
+}
+System_Ext(Telecom, "Телеком-оператор", "Внешний оператор по отправке СМС")
+System_Ext(BKI, "Бюро Кредитных Историй", "Внешняя система предоставляющая кредитную историю по человеку")
+
+Rel(OnlineCreditSystem, BKI, "Получение информации по кредитной истории")
+Rel(CreditSystem, BKI, "Получение информации по кредитной истории")
+Rel(OnlineCreditSystem, CreditSystem, "Оформление заявки, получение ставок")
+Rel(ABS, CreditSystem, "Оформление заявки")
+Rel(OnlineCreditSystem, Telecom, "Отправка СМС-оповещений клиенту")
+Rel(Telecom, client, "СМС-оповещение")
+Rel_U(manager_bo_c, CreditSystem, "Работа с заявкой")
+Rel(manager_fo, ABS, "Оформление заявки")
+Rel(client, manager_fo, "Оформление заявки офлайн")
+Rel(client, OnlineCreditSystem, "Оформление заявки онлайн")
+@enduml 
