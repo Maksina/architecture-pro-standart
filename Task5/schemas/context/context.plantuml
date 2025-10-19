@@ -15,12 +15,13 @@ System_Ext(BKI, "Бюро Кредитных Историй", "Внешняя с
 
 Rel(OnlineCreditSystem, BKI, "Получение информации по кредитной истории")
 Rel(CreditSystem, BKI, "Получение информации по кредитной истории")
-Rel(OnlineCreditSystem, CreditSystem, "Оформление заявки, получение ставок")
-Rel(ABS, CreditSystem, "Оформление заявки")
+Rel(OnlineCreditSystem, CreditSystem, "Передача информации о заявке, получение ставок")
+Rel(ABS, CreditSystem, "Передача информации о заявке")
 Rel(OnlineCreditSystem, Telecom, "Отправка СМС-оповещений клиенту")
 Rel(Telecom, client, "СМС-оповещение")
 Rel_U(manager_bo_c, CreditSystem, "Работа с заявкой")
 Rel(manager_fo, ABS, "Оформление заявки")
 Rel(client, manager_fo, "Оформление заявки офлайн")
 Rel(client, OnlineCreditSystem, "Оформление заявки онлайн")
+Rel_L(OnlineCreditSystem, ABS, "Передача информации о заявке")
 @enduml 
